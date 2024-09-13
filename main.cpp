@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include "main.h"
 
 int main(int argc, char* argv[]) {
     std::vector<std::string> vmFiles;
