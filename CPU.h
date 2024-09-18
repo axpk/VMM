@@ -18,7 +18,7 @@ public:
     void dumpState() const;
 
 private:
-    std::array<uint32_t, 32> registers{};
+    std::array<uint32_t, 32> registers;
     uint32_t programCounter;
 };
 

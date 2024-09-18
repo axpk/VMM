@@ -4,7 +4,6 @@ project(VMM)
 set(CMAKE_CXX_STANDARD 20)
 
 add_executable(VMM main.cpp
-        main.h
         Hypervisor.cpp
         Hypervisor.h
         VM.cpp

@@ -1,7 +1,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include "main.h"
 #include "Hypervisor.h"
 #include "Util.h"
 
