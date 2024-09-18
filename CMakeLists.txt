@@ -10,4 +10,8 @@ add_executable(VMM main.cpp
         VM.cpp
         VM.h
         Util.cpp
-        Util.h)
+        Util.h
+        CPU.cpp
+        CPU.h
+        Instruction.cpp
+        Instruction.h)
