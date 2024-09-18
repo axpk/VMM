@@ -9,7 +9,7 @@ uint32_t CPU::getRegister(int index) const {
         std::cerr << "Wrong index given to getRegister" << std::endl;
         return 0;
     }
-    return registers[index];
+    return registers.at(index);
 }
 
 void CPU::setRegister(int index, uint32_t value) {
@@ -18,7 +18,7 @@ void CPU::setRegister(int index, uint32_t value) {
     }
 
     if (index != 0) { // Register 0 is always 0
-        registers[index] = value;
+        registers.at(index) = value;
     }
 }
 
@@ -34,7 +34,7 @@ void CPU::dumpState() const {
     std::cout << "Processor State: " << std::endl;
 
     for (int i = 0; i < 32; i++) {
-        std::cout << "R" << i << ": " << registers[i] << std::endl;
+        std::cout << "R" << i << ": " << registers.at(i) << std::endl;
     }
     std::cout << "PC: " << programCounter << std::endl;
 }
