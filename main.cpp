@@ -24,6 +24,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // TODO - change to for loop for multiple VM parsing
     std::string configPath = "input_files/assembly_file_vm1";
     Config config;
 
