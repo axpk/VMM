@@ -26,10 +26,28 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
         if (key == "vm_exec_slice_in_instructions") {
             config.vm_exec_slice_in_instructions = std::stoi(value);
         } else if (key == "vm_binary") {
-            config.vm_binaries.push_back(value);
+            config.vm_binary = value;
         } else {
             std::cerr << "Unknown file key: " << key << std::endl;
         }
+    }
+    file.close();
+    return true;
+}
+
+bool parseAssemblyFile(const std::string &assemblyPath, std::vector<std::string>& assemblyLines) {
+    std::ifstream file(assemblyPath);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file: " << assemblyPath << std::endl;
+        return false;
+    }
+
+    std::string line;
+    while(getline(file, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        assemblyLines.push_back(line);
     }
     file.close();
     return true;
