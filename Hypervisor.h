@@ -3,9 +3,15 @@
 
 #include <vector>
 #include <string>
+#include "VM.h"
+#include "Util.h"
 
 class Hypervisor {
-    std::vector<std::string> vms;
+private:
+    std::vector<VM> vms;
+
+public:
+    void createVM(const Config& config);
 };
 
 

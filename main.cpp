@@ -23,16 +23,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // TODO - change to for loop for multiple VM parsing
-    std::string configPath = "input_files/assembly_file_vm1";
-    Config config;
-
-    if (!parseConfigFile(configPath, config)) {
-        std::cerr << "Error parsing config assembly file" << std::endl;
-        return 1;
-    }
-
     Hypervisor hypervisor;
+
+    for (const auto& configPath : vmFiles) {
+        Config config;
+        if (!parseConfigFile(configPath, config)) {
+            std::cerr << "Error parsing config assembly file" << std::endl;
+            return 1;
+        }
+        hypervisor.createVM(config);
+    }
 
     return 0;
 }

@@ -1,7 +1,6 @@
 #ifndef VMM_VM_H
 #define VMM_VM_H
 
-
 class VM {
 
 };
