@@ -1,6 +1,7 @@
 #include "Util.h"
 #include <fstream>
 #include <iostream>
+#include <unordered_map>
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
 
@@ -58,9 +59,37 @@ bool parseAssemblyFile(const std::string &assemblyPath, std::vector<Instruction>
         }
 
         // TODO - handle all other instruction types
-
+        size_t spacePos = line.find(' ');
+        std::string opcode = line.substr(0, spacePos);
+        instruction.instructionType = getInstructionType(opcode);
+        if (instruction.instructionType != InstructionType::INVALID) {
+            // TODO - Get operands
+        }
 
     }
     file.close();
     return true;
+}
+
+InstructionType getInstructionType(const std::string& opcode) {
+    static const std::unordered_map<std::string, InstructionType> opcodeMap = {
+            {"li", InstructionType::LI},
+            {"add", InstructionType::ADD},
+            {"addi", InstructionType::ADDI},
+            {"and", InstructionType::AND},
+            {"mul", InstructionType::MUL},
+            {"or", InstructionType::OR},
+            {"sll", InstructionType::SLL},
+            {"srl", InstructionType::SRL},
+            {"sub", InstructionType::SUB},
+            {"xor", InstructionType::XOR}
+    };
+
+    auto it = opcodeMap.find(opcode);
+    if (it != opcodeMap.end()) {
+        return it->second;
+    } else {
+        std::cerr << "Couldn't parse MIPS opcode: " << it->first << std::endl;
+        return InstructionType::INVALID;
+    }
 }

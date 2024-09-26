@@ -12,5 +12,6 @@ struct Config {
 
 bool parseConfigFile(const std::string& configPath, Config& config);
 bool parseAssemblyFile(const std::string& assemblyPath, std::vector<Instruction>& assemblyLines);
+InstructionType getInstructionType(const std::string& opcode);
 
 #endif //VMM_UTIL_H
