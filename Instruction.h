@@ -20,7 +20,8 @@ enum class InstructionType {
  * MIPS Instruction
  */
 class Instruction {
-
+public:
+    Instruction();
 };
 
 
