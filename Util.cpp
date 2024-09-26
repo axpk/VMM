@@ -35,7 +35,8 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     return true;
 }
 
-bool parseAssemblyFile(const std::string &assemblyPath, std::vector<std::string>& assemblyLines) {
+// TODO - Change to parse directly to instruction
+bool parseAssemblyFile(const std::string &assemblyPath, std::vector<Instruction>& assemblyLines) {
     std::ifstream file(assemblyPath);
     if (!file.is_open()) {
         std::cerr << "Failed to open file: " << assemblyPath << std::endl;
@@ -47,7 +48,18 @@ bool parseAssemblyFile(const std::string &assemblyPath, std::vector<std::string>
         if (line.empty() || line[0] == '#') {
             continue;
         }
-        assemblyLines.push_back(line);
+
+        Instruction instruction {};
+
+        if (line == "DUMP_PROCESSOR_STATE") {
+            instruction.instructionType = InstructionType::DUMP_PROCESSOR_STATE;
+            assemblyLines.push_back(instruction);
+            continue;
+        }
+
+        // TODO - handle all other instruction types
+
+
     }
     file.close();
     return true;

@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <iostream>
 
+struct Instruction;
+
 /**
  * MIPS CPU State Representation
  */
@@ -16,6 +18,7 @@ public:
     uint32_t getProgramCounter() const;
     void setProgramCounter(uint32_t pc);
     void dumpState() const;
+    void executeInstruction(Instruction& instruction);
 
 private:
     std::array<uint32_t, 32> registers;

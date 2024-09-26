@@ -1,6 +1,8 @@
 #ifndef VMM_INSTRUCTION_H
 #define VMM_INSTRUCTION_H
 
+#include <cstdint>
+
 enum class InstructionType {
     ADD,
     SUB,
@@ -19,9 +21,11 @@ enum class InstructionType {
 /**
  * MIPS Instruction
  */
-class Instruction {
-public:
-    Instruction();
+struct Instruction {
+    InstructionType instructionType = InstructionType::INVALID;
+    uint32_t operand1 = 0;
+    uint32_t operand2 = 0;
+    uint32_t dest = 0;
 };
 
 

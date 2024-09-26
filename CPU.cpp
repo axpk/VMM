@@ -1,4 +1,5 @@
 #include "CPU.h"
+#include "Instruction.h"
 
 CPU::CPU() : programCounter(0) {
     registers.fill(0);
@@ -37,4 +38,9 @@ void CPU::dumpState() const {
         std::cout << "R" << i << ": " << registers.at(i) << std::endl;
     }
     std::cout << "PC: " << programCounter << std::endl;
+}
+
+// TODO - use switch stmnt for handling instruction types
+void CPU::executeInstruction(Instruction &instruction) {
+
 }

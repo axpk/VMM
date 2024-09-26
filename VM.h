@@ -5,12 +5,13 @@
 #include "CPU.h"
 #include <memory>
 #include <vector>
+#include "Instruction.h"
 
 class VM {
 private:
     Config config;
     std::unique_ptr<CPU> cpu;
-    std::vector<std::string> assemblyLines;
+    std::vector<Instruction> assemblyLines;
 
 public:
     VM(const Config& config);

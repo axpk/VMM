@@ -12,5 +12,4 @@ add_executable(VMM main.cpp
         Util.h
         CPU.cpp
         CPU.h
-        Instruction.cpp
         Instruction.h)
