@@ -4,7 +4,6 @@
 #include <unordered_map>
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
-
     std::cout << "Config path: " << configPath << std::endl; // Debugging
 
     std::ifstream file(configPath);
@@ -36,7 +35,6 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     return true;
 }
 
-// TODO - Change to parse directly to instruction
 bool parseAssemblyFile(const std::string &assemblyPath, std::vector<Instruction>& assemblyLines) {
     std::ifstream file(assemblyPath);
     if (!file.is_open()) {
@@ -52,20 +50,31 @@ bool parseAssemblyFile(const std::string &assemblyPath, std::vector<Instruction>
 
         Instruction instruction {};
 
-        if (line == "DUMP_PROCESSOR_STATE") {
+        if (line == "DUMP_PROCESSOR_STATE") { // Because this line doesn't contain a space.
             instruction.instructionType = InstructionType::DUMP_PROCESSOR_STATE;
             assemblyLines.push_back(instruction);
             continue;
         }
 
-        // TODO - handle all other instruction types
         size_t spacePos = line.find(' ');
         std::string opcode = line.substr(0, spacePos);
+        std::string operands = line.substr(spacePos + 1);
         instruction.instructionType = getInstructionType(opcode);
+        // TODO - Change, some ops are out of order.
         if (instruction.instructionType != InstructionType::INVALID) {
-            // TODO - Get operands
+            if (instruction.instructionType == InstructionType::LI) { // TODO - change, since mul etc are like li
+                size_t commaPos = operands.find(',');
+                parseRegisterNumber(operands.substr(0, commaPos), instruction.operand1);
+                try {
+                    instruction.operand2 = std::stoi(operands.substr(commaPos + 1));
+                } catch (const std::exception&) {
+                    std::cerr << "Couldn't parse value for li instr: " << operands.substr(commaPos + 1) << std::endl;
+                }
+            } else {
+                // TODO - do rest of regular operations
+            }
         }
-
+        assemblyLines.push_back(instruction);
     }
     file.close();
     return true;
@@ -91,5 +100,17 @@ InstructionType getInstructionType(const std::string& opcode) {
     } else {
         std::cerr << "Couldn't parse MIPS opcode: " << it->first << std::endl;
         return InstructionType::INVALID;
+    }
+}
+
+bool parseRegisterNumber(const std::string &reg, uint32_t &regNum) {
+    if (reg.empty() || reg[0] != '$') {
+        return false;
+    }
+    try {
+        regNum = std::stoi(reg.substr(1));
+        return true;
+    } catch (const std::exception&) {
+        return false;
     }
 }
