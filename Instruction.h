@@ -24,7 +24,7 @@ enum class InstructionType {
 struct Instruction {
     InstructionType instructionType = InstructionType::INVALID;
     uint32_t operand1 = 0;
-    uint32_t operand2 = 0;
+    uint32_t operand2 = 0; // TODO - some li instructions can take negative numbers.
     uint32_t dest = 0;
 };
 

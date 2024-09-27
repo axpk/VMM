@@ -35,7 +35,7 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     return true;
 }
 
-bool parseAssemblyFile(const std::string &assemblyPath, std::vector<Instruction>& assemblyLines) {
+bool parseAssemblyFile(const std::string &assemblyPath, /* output */ std::vector<Instruction>& assemblyLines) {
     std::ifstream file(assemblyPath);
     if (!file.is_open()) {
         std::cerr << "Failed to open file: " << assemblyPath << std::endl;
