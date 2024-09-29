@@ -64,7 +64,11 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
         std::string value = line.substr(equalPos + 1);
 
         if (key == "vm_exec_slice_in_instructions") {
-            config.vm_exec_slice_in_instructions = std::stoi(value);
+            try {
+                config.vm_exec_slice_in_instructions = std::stoi(value);
+            } catch (std::exception& e) {
+                std::cerr << "Error stoi exec_slice_in_instructions in parseConfigFile" << std::endl;
+            }
         } else if (key == "vm_binary") {
             config.vm_binary = value;
         } else {
@@ -128,7 +132,14 @@ Instruction parseInstruction(const std::string& line) {
 
     std::string operand;
     while(std::getline(iss, operand, ',')) {
-        inst.operands.push_back(parseRegister(operand));
+        if (operand.find('$') != std::string::npos) {
+            inst.operands.push_back(parseRegister(operand));
+        } else {
+            inst.operands.push_back(static_cast<int>(std::stoi(operand)));
+            if (inst.instructionType == InstructionType::OR) { // Convert OR to ORI internally if immediate value
+                inst.instructionType = InstructionType::ORI;
+            }
+        }
     }
 
     return inst;
@@ -199,7 +210,7 @@ public:
             case InstructionType::AND:
                 registers[inst.operands[0]] = registers[inst.operands[1]] & registers[inst.operands[2]];
                 break;
-            case InstructionType::OR: // TODO - Add support for ori
+            case InstructionType::OR:
                 registers[inst.operands[0]] = registers[inst.operands[1]] | registers[inst.operands[2]];
                 break;
             case InstructionType::ORI:
@@ -227,6 +238,7 @@ public:
             default:
                 std::cerr << "Invalid MIPS instruction executed" << std::endl;
         }
+        pc++;
     }
 
     void dumpState() const {
@@ -243,10 +255,34 @@ class VM {
 private:
     Config config;
     std::unique_ptr<CPU> cpu;
+    std::vector<Instruction> instructions;
+    int currentInstructionIndex;
 public:
-    VM(Config c) : config(std::move(c)){
-        this->cpu = std::make_unique<CPU>();
+    VM(Config c) : config(std::move(c)), cpu(std::make_unique<CPU>()), currentInstructionIndex(0) {
+        loadInstructions();
     }
+
+    void loadInstructions() {
+        std::ifstream file(config.vm_binary);
+        std::string line;
+        while (std::getline(file, line)) {
+            instructions.push_back(parseInstruction(line));
+        }
+    }
+
+    bool run(int contextSwitch) {
+        for (int i = 0; i < contextSwitch && currentInstructionIndex < instructions.size(); i++) {
+            cpu->execute(instructions.at(i));
+            std::cout << "Executing on CPU" << std::endl;
+            currentInstructionIndex++;
+        }
+        return currentInstructionIndex < instructions.size();
+    }
+
+    Config getConfig() {
+        return this->config;
+    }
+
 };
 
 class Hypervisor {
@@ -257,6 +293,21 @@ public:
     void createVM(const Config& config) {
        std::unique_ptr<VM> vm = std::make_unique<VM>(config);
        vms.push_back(std::move(vm));
+       std::cout << "Created VM!" << std::endl;
+    }
+    void run() {
+        bool allVMSCompleted = false;
+        while (!allVMSCompleted) {
+            allVMSCompleted = true;
+            for (int i = 0; i < vms.size(); i++) {
+                bool vmHasMoreInstructions = vms.at(i)->run(vms.at(i)->getConfig().vm_exec_slice_in_instructions);
+                if (vmHasMoreInstructions) {
+                    allVMSCompleted = false;
+                }
+                std::cout << "Context switching from VM: " << i << std::endl;
+            }
+        }
+        std::cout << "All VMs completed executing" << std::endl;
     }
 };
 
@@ -288,6 +339,8 @@ int main(int argc, char* argv[]) {
         }
         hypervisor.createVM(config);
     }
+
+    hypervisor.run();
 
     return 0;
 }
