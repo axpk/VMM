@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
+#include <sstream>
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
     std::cout << "Config path: " << configPath << std::endl; // Debugging
@@ -113,4 +114,9 @@ bool parseRegisterNumber(const std::string &reg, uint32_t &regNum) {
     } catch (const std::exception&) {
         return false;
     }
+}
+
+std::vector<std::string> tokenize(const std::string &str, char delimiter) {
+    std::vector<std::string>
+    return std::vector<std::string>();
 }

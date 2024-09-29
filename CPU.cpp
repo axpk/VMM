@@ -41,6 +41,6 @@ void CPU::dumpState() const {
 }
 
 // TODO - use switch stmnt for handling instruction types
-void CPU::executeInstruction(Instruction &instruction) {
+void CPU::executeInstruction(Instruction& instruction) {
 
 }

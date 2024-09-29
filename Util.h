@@ -14,5 +14,6 @@ bool parseConfigFile(const std::string& configPath, Config& config);
 bool parseAssemblyFile(const std::string& assemblyPath, std::vector<Instruction>& assemblyLines);
 InstructionType getInstructionType(const std::string& opcode);
 bool parseRegisterNumber(const std::string& reg, uint32_t& regNum);
+std::vector<std::string> tokenize(const std::string& str, char delimiter);
 
 #endif //VMM_UTIL_H
