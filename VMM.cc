@@ -1,5 +1,6 @@
 /**
  * C++ 20
+ * Tested with g++ -std=c++20
 */
 #include <iostream>
 #include <utility>
@@ -8,14 +9,22 @@
 #include <array>
 #include <memory>
 #include <fstream>
+#include <unordered_map>
+#include <sstream>
 
 enum class InstructionType {
     ADD,
+    ADDU,
     SUB,
+    SUBU,
     ADDI,
+    ADDIU,
     MUL,
+    MULT,
+    DIV,
     AND,
     OR,
+    ORI,
     XOR,
     SLL,
     SRL,
@@ -26,46 +35,12 @@ enum class InstructionType {
 
 struct Instruction {
     InstructionType instructionType = InstructionType::INVALID;
-    uint32_t dest = 0;
-    uint32_t operand1 = 0;
-    uint32_t operand2 = 0;
-    uint32_t immediate = 0;
+    std::vector<int> operands;
 };
 
 struct Config {
     int vm_exec_slice_in_instructions = 0;
     std::string vm_binary;
-};
-
-class CPU {
-private:
-    std::array<uint32_t, 32> registers;
-    uint32_t pc;
-public:
-    CPU() : pc(0) {
-        registers.fill(0);
-    }
-};
-
-class VM {
-private:
-    Config config;
-    std::unique_ptr<CPU> cpu;
-public:
-    VM(Config c) : config(std::move(c)){
-        this->cpu = std::make_unique<CPU>();
-    }
-};
-
-class Hypervisor {
-private:
-    std::vector<std::unique_ptr<VM>> vms;
-public:
-    Hypervisor() = default;
-    void createVM(const Config& config) {
-       std::unique_ptr<VM> vm = std::make_unique<VM>(config);
-       vms.push_back(std::move(vm));
-    }
 };
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
@@ -99,6 +74,191 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     file.close();
     return true;
 }
+
+InstructionType getInstructionType(const std::string& opcode) {
+    static const std::unordered_map<std::string, InstructionType> opcodeMap = {
+            {"li", InstructionType::LI},
+            {"add", InstructionType::ADD},
+            {"addi", InstructionType::ADDI},
+            {"addu", InstructionType::ADDU},
+            {"addiu", InstructionType::ADDIU},
+            {"and", InstructionType::AND},
+            {"mul", InstructionType::MUL},
+            {"mult", InstructionType::MULT},
+            {"div", InstructionType::DIV},
+            {"or", InstructionType::OR},
+            {"ori", InstructionType::ORI},
+            {"sll", InstructionType::SLL},
+            {"srl", InstructionType::SRL},
+            {"sub", InstructionType::SUB},
+            {"subu", InstructionType::SUBU},
+            {"xor", InstructionType::XOR}
+    };
+
+    auto it = opcodeMap.find(opcode);
+    if (it != opcodeMap.end()) {
+        return it->second;
+    } else {
+        std::cerr << "Couldn't parse MIPS opcode: " << it->first << std::endl;
+        return InstructionType::INVALID;
+    }
+}
+
+int parseRegister(const std::string& operand) {
+    if (operand[0] == '$') {
+        return static_cast<int>(std::stoi(operand.substr(1))); // Register value
+    } else {
+        return static_cast<int>(std::stoi(operand)); // Immediate value
+    }
+}
+
+Instruction parseInstruction(const std::string& line) {
+    std::istringstream iss(line);
+    Instruction inst;
+
+    std::string opcode;
+    iss >> opcode;
+
+    if (opcode == "DUMP_PROCESSOR_STATE") {
+        inst.instructionType = InstructionType::DUMP_PROCESSOR_STATE;
+        return inst;
+    }
+
+    inst.instructionType = getInstructionType(opcode);
+
+    std::string operand;
+    while(std::getline(iss, operand, ',')) {
+        inst.operands.push_back(parseRegister(operand));
+    }
+
+    return inst;
+}
+
+class CPU {
+private:
+    std::array<int, 32> registers;
+    uint32_t hi; // mult special register
+    uint32_t lo; // mult special register
+    uint32_t pc;
+public:
+    CPU() : pc(0) {
+        registers.fill(0);
+    }
+    void execute(const Instruction& inst) {
+        switch(inst.instructionType) {
+            // ARITHMETIC
+            case InstructionType::ADD:
+                registers[inst.operands[0]] = registers[inst.operands[1]] + registers[inst.operands[2]];
+                break;
+            case InstructionType::SUB:
+                registers[inst.operands[0]] = registers[inst.operands[1]] - registers[inst.operands[2]];
+                break;
+            case InstructionType::ADDI:
+                registers[inst.operands[0]] = registers[inst.operands[1]] + inst.operands[2];
+                break;
+            case InstructionType::ADDU: {
+                uint32_t op1 = static_cast<uint32_t>(registers[inst.operands[1]]);
+                uint32_t op2 = static_cast<uint32_t>(registers[inst.operands[2]]);
+                registers[inst.operands[0]] = static_cast<int>(op1) + static_cast<int>(op2);
+                break;
+            }
+            case InstructionType::SUBU: {
+                uint32_t op1 = static_cast<uint32_t>(registers[inst.operands[1]]);
+                uint32_t op2 = static_cast<uint32_t>(registers[inst.operands[2]]);
+                registers[inst.operands[0]] = static_cast<int>(op1) - static_cast<int>(op2);
+            }
+            case InstructionType::ADDIU: {
+                uint32_t op1 = static_cast<uint32_t>(registers[inst.operands[1]]);
+                uint32_t op2 = static_cast<uint32_t>(inst.operands[2]);
+                registers[inst.operands[0]] = static_cast<int>(op1) + static_cast<int>(op2);
+                break;
+            }
+            case InstructionType::MUL: { // Result in 32-bit integer
+                int32_t ans = registers[inst.operands[1]] * registers[inst.operands[2]];
+                registers[inst.operands[0]] = ans;
+                break;
+            }
+            case InstructionType::MULT: {
+                int64_t res = registers[inst.operands[1]] * registers[inst.operands[2]];
+                hi = static_cast<int32_t>((res >> 32)); // upper 32 bits
+                lo = static_cast<int32_t>(res); // lower 32 bits
+                break;
+            }
+            case InstructionType::DIV: {
+                if (registers[inst.operands[2]] == 0) {
+                    std::cerr << "Divide by 0 error" << std::endl;
+                    break;
+                }
+
+                lo = registers[inst.operands[1]] / registers[inst.operands[2]];
+                hi = registers[inst.operands[1]] % registers[inst.operands[2]];
+                break;
+            }
+
+            // LOGICAL
+            case InstructionType::AND:
+                registers[inst.operands[0]] = registers[inst.operands[1]] & registers[inst.operands[2]];
+                break;
+            case InstructionType::OR: // TODO - Add support for ori
+                registers[inst.operands[0]] = registers[inst.operands[1]] | registers[inst.operands[2]];
+                break;
+            case InstructionType::ORI:
+                registers[inst.operands[0]] = registers[inst.operands[1]] | inst.operands[2];
+                break;
+            case InstructionType::XOR:
+                registers[inst.operands[0]] = registers[inst.operands[1]] ^ inst.operands[2];
+                break;
+            case InstructionType::SLL:
+                registers[inst.operands[0]] = registers[inst.operands[1]] << inst.operands[2];
+                break;
+            case InstructionType::SRL:
+                registers[inst.operands[0]] = registers[inst.operands[1]] >> inst.operands[2];
+                break;
+
+            // DATA
+            case InstructionType::LI:
+                registers[inst.operands[0]] = inst.operands[1];
+                break;
+
+            // SPECIAL
+            case InstructionType::DUMP_PROCESSOR_STATE:
+                dumpState();
+                break;
+            default:
+                std::cerr << "Invalid MIPS instruction executed" << std::endl;
+        }
+    }
+
+    void dumpState() const {
+        std::cout << "Processor State: " << std::endl;
+
+        for (int i = 0; i < 32; i++) {
+            std::cout << "R" << i << ": " << registers.at(i) << std::endl;
+        }
+        std::cout << "PC: " << pc << std::endl;
+    }
+};
+
+class VM {
+private:
+    Config config;
+    std::unique_ptr<CPU> cpu;
+public:
+    VM(Config c) : config(std::move(c)){
+        this->cpu = std::make_unique<CPU>();
+    }
+};
+
+class Hypervisor {
+private:
+    std::vector<std::unique_ptr<VM>> vms;
+public:
+    Hypervisor() = default;
+    void createVM(const Config& config) {
+       std::unique_ptr<VM> vm = std::make_unique<VM>(config);
+       vms.push_back(std::move(vm));
+    }
+};
 
 int main(int argc, char* argv[]) {
     std::vector<std::string> vmFiles;
