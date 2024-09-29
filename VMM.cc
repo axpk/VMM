@@ -44,8 +44,6 @@ struct Config {
 };
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
-    std::cout << "Config path: " << configPath << std::endl; // Debugging
-
     std::ifstream file(configPath);
     if (!file.is_open()) {
         std::cerr << "Failed to open file: " << configPath << std::endl;
@@ -62,6 +60,8 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
 
         std::string key = line.substr(0, equalPos);
         std::string value = line.substr(equalPos + 1);
+
+        std::cout << "Key: " << key << ", Value: " << value << std::endl;
 
         if (key == "vm_exec_slice_in_instructions") {
             try {
@@ -109,11 +109,8 @@ InstructionType getInstructionType(const std::string& opcode) {
 }
 
 int parseRegister(const std::string& operand) {
-    if (operand[0] == '$') {
-        return static_cast<int>(std::stoi(operand.substr(1))); // Register value
-    } else {
-        return static_cast<int>(std::stoi(operand)); // Immediate value
-    }
+    auto keyLocation = operand.find('$');
+    return static_cast<int>(std::stoi(operand.substr(keyLocation + 1))); // Register value
 }
 
 Instruction parseInstruction(const std::string& line) {
@@ -123,7 +120,7 @@ Instruction parseInstruction(const std::string& line) {
     std::string opcode;
     iss >> opcode;
 
-    if (opcode == "DUMP_PROCESSOR_STATE") {
+    if (opcode.find("DUMP_PROCESSOR_STATE") != std::string::npos) {
         inst.instructionType = InstructionType::DUMP_PROCESSOR_STATE;
         return inst;
     }
@@ -191,8 +188,8 @@ public:
             }
             case InstructionType::MULT: {
                 int64_t res = registers[inst.operands[1]] * registers[inst.operands[2]];
-                hi = static_cast<int32_t>((res >> 32)); // upper 32 bits
-                lo = static_cast<int32_t>(res); // lower 32 bits
+                this->hi = static_cast<int32_t>((res >> 32)); // upper 32 bits
+                this->lo = static_cast<int32_t>(res); // lower 32 bits
                 break;
             }
             case InstructionType::DIV: {
@@ -201,8 +198,8 @@ public:
                     break;
                 }
 
-                lo = registers[inst.operands[1]] / registers[inst.operands[2]];
-                hi = registers[inst.operands[1]] % registers[inst.operands[2]];
+                this->lo = registers[inst.operands[1]] / registers[inst.operands[2]];
+                this->hi = registers[inst.operands[1]] % registers[inst.operands[2]];
                 break;
             }
 
@@ -233,7 +230,7 @@ public:
 
             // SPECIAL
             case InstructionType::DUMP_PROCESSOR_STATE:
-                dumpState();
+                this->dumpState();
                 break;
             default:
                 std::cerr << "Invalid MIPS instruction executed" << std::endl;
@@ -247,6 +244,8 @@ public:
         for (int i = 0; i < 32; i++) {
             std::cout << "R" << i << ": " << registers.at(i) << std::endl;
         }
+        std::cout << "hi: " << hi << std::endl;
+        std::cout << "lo: " << lo << std::endl;
         std::cout << "PC: " << pc << std::endl;
     }
 };
@@ -272,8 +271,7 @@ public:
 
     bool run(int contextSwitch) {
         for (int i = 0; i < contextSwitch && currentInstructionIndex < instructions.size(); i++) {
-            cpu->execute(instructions.at(i));
-            std::cout << "Executing on CPU" << std::endl;
+            cpu->execute(instructions.at(currentInstructionIndex));
             currentInstructionIndex++;
         }
         return currentInstructionIndex < instructions.size();
@@ -293,7 +291,6 @@ public:
     void createVM(const Config& config) {
        std::unique_ptr<VM> vm = std::make_unique<VM>(config);
        vms.push_back(std::move(vm));
-       std::cout << "Created VM!" << std::endl;
     }
     void run() {
         bool allVMSCompleted = false;
