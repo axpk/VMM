@@ -30,12 +30,14 @@ enum class InstructionType {
     SRL,
     LI,
     DUMP_PROCESSOR_STATE,
+    SNAPSHOT,
     INVALID
 };
 
 struct Instruction {
     InstructionType instructionType = InstructionType::INVALID;
     std::vector<int> operands;
+    std::string snapshotPath;
 };
 
 struct Config {
@@ -122,6 +124,13 @@ Instruction parseInstruction(const std::string& line) {
 
     if (opcode.find("DUMP_PROCESSOR_STATE") != std::string::npos) {
         inst.instructionType = InstructionType::DUMP_PROCESSOR_STATE;
+        return inst;
+    }
+
+    if (line.find("SNAPSHOT") != std::string::npos) {
+        inst.instructionType = InstructionType::SNAPSHOT;
+        auto keyLocation = line.find(' ');
+        inst.snapshotPath = line.substr(keyLocation + 1);
         return inst;
     }
 
@@ -232,10 +241,21 @@ public:
             case InstructionType::DUMP_PROCESSOR_STATE:
                 this->dumpState();
                 break;
+            case InstructionType::SNAPSHOT: {
+                snapshot(inst);
+                break;
+            }
+
             default:
                 std::cerr << "Invalid MIPS instruction executed" << std::endl;
         }
         pc++;
+    }
+
+    bool snapshot(const Instruction& inst) {
+        // TODO - Handle snapshot output
+        std::string outputPath = inst.snapshotPath;
+        return true;
     }
 
     void dumpState() const {
@@ -316,6 +336,9 @@ int main(int argc, char* argv[]) {
         std::cout << arg << std::endl;
         if (arg == "-v" && i + 1 < argc) { // VM Files
             vmFiles.push_back(argv[++i]);
+        } else if (arg == "-s" && i + 1 < argc) { // TODO - Handle snapshots
+            // Should start VM from snapshot position
+
         } else {
             std::cerr << "No filename given after -v flag" << std::endl;
         }
