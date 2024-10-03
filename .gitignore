@@ -1,6 +1,6 @@
 cmake-build-debug/
 .idea
 *.DS_Store
-VMM.o
+VMM.out
 instructions_vm1
 instructions_vm2
