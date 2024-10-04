@@ -241,21 +241,11 @@ public:
             case InstructionType::DUMP_PROCESSOR_STATE:
                 this->dumpState();
                 break;
-            case InstructionType::SNAPSHOT: {
-                snapshot(inst);
-                break;
-            }
 
             default:
                 std::cerr << "Invalid MIPS instruction executed" << std::endl;
         }
         pc++;
-    }
-
-    bool snapshot(const Instruction& inst) {
-        // TODO - Handle snapshot output
-        std::string outputPath = inst.snapshotPath;
-        return true;
     }
 
     void dumpState() const {
@@ -289,8 +279,25 @@ public:
         }
     }
 
+    void snapshot(const std::string& outputPath) {
+        std::ofstream outFile(outputPath, std::ios::out);
+
+        if (!outFile.is_open()) {
+            std::cerr << "Couldn't write to file: " << outputPath << std::endl;
+            return;
+        }
+
+        // TODO - Finish here
+
+    }
+
     bool run(int contextSwitch) {
         for (int i = 0; i < contextSwitch && currentInstructionIndex < instructions.size(); i++) {
+            if (instructions.at(currentInstructionIndex).instructionType == InstructionType::SNAPSHOT) {
+                snapshot(instructions.at(currentInstructionIndex).snapshotPath);
+                continue;
+            }
+
             cpu->execute(instructions.at(currentInstructionIndex));
             currentInstructionIndex++;
         }
