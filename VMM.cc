@@ -34,6 +34,11 @@ enum class InstructionType {
     INVALID
 };
 
+struct VMFileConfig {
+    std::string vmFile;
+    std::string snapshotFile;
+};
+
 struct Instruction {
     InstructionType instructionType = InstructionType::INVALID;
     std::vector<int> operands;
@@ -279,6 +284,10 @@ public:
         }
     }
 
+    void loadSnapshot() { // TODO - load CPU state from file
+
+    }
+
     void snapshot(const std::string& outputPath) {
         std::ofstream outFile(outputPath, std::ios::out);
 
@@ -336,31 +345,34 @@ public:
 };
 
 int main(int argc, char* argv[]) {
-    std::vector<std::string> vmFiles;
+    std::vector<VMFileConfig> vmFileConfigsVector;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         std::cout << arg << std::endl;
+        VMFileConfig vmFileConfig;
         if (arg == "-v" && i + 1 < argc) { // VM Files
-            vmFiles.push_back(argv[++i]);
-        } else if (arg == "-s" && i + 1 < argc) { // TODO - Handle snapshots
-            // Should start VM from snapshot position
+            vmFileConfig.vmFile = argv[++i];
 
+            if (i + 1 < argc && std::string(argv[i+1]) == "-s") { // Snapshot files
+                if (i + 2 > argc) {
+                    std::cerr << "No snapshot file provided after -s flag" << std::endl;
+                    return 1;
+                }
+                vmFileConfig.snapshotFile = argv[i+2];
+                i += 2; // TODO - check if valid logic
+            }
+            vmFileConfigsVector.emplace_back(std::move(vmFileConfig));
         } else {
             std::cerr << "No filename given after -v flag" << std::endl;
         }
     }
 
-    if (vmFiles.empty()) {
-        std::cerr << "No VM files provided. Use -v to specify files." << std::endl;
-        return 1;
-    }
-
     Hypervisor hypervisor;
 
-    for (const auto& configPath : vmFiles) {
+    for (const auto& vmConfig : vmFileConfigsVector) {
         Config config;
-        if (!parseConfigFile(configPath, config)) {
+        if (!parseConfigFile(vmConfig.vmFile, config)) {
             std::cerr << "Error parsing config assembly file" << std::endl;
             return 1;
         }
