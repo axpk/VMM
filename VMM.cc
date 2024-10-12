@@ -86,6 +86,10 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     return true;
 }
 
+bool parseSnapshotFile(const std::string& snapshotPath) {
+    // TODO
+}
+
 InstructionType getInstructionType(const std::string& opcode) {
     static const std::unordered_map<std::string, InstructionType> opcodeMap = {
             {"li", InstructionType::LI},
@@ -376,6 +380,11 @@ int main(int argc, char* argv[]) {
             std::cerr << "Error parsing config assembly file" << std::endl;
             return 1;
         }
+        if (!vmConfig.snapshotFile.empty()) {
+            // TODO - Handle snapshots here
+
+        }
+
         hypervisor.createVM(config);
     }
 
