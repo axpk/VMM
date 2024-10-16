@@ -170,6 +170,9 @@ public:
     CPU() : pc(0) {
         registers.fill(0);
     }
+    CPU(const std::array<int, 32>& regs) : pc(0) {
+        registers = regs; // todo - validate
+    }
     void execute(const Instruction& inst) {
         switch(inst.instructionType) {
             // ARITHMETIC
@@ -280,6 +283,10 @@ public:
         loadInstructions();
     }
 
+    VM(Config c, std::unique_ptr<CPU> cpu) : config(std::move(c)), currentInstructionIndex(0) {
+        this->cpu = std::move(cpu);
+    }
+
     void loadInstructions() {
         std::ifstream file(config.vm_binary);
         std::string line;
@@ -332,6 +339,10 @@ public:
        std::unique_ptr<VM> vm = std::make_unique<VM>(config);
        vms.push_back(std::move(vm));
     }
+    void createVM(const Config& config, std::unique_ptr<CPU> cpu) {
+        std::unique_ptr<VM> vm = std::make_unique<VM>(config, std::move(cpu));
+        vms.push_back(std::move(vm));
+    }
     void run() {
         bool allVMSCompleted = false;
         while (!allVMSCompleted) {
@@ -381,11 +392,14 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         if (!vmConfig.snapshotFile.empty()) {
-            // TODO - Handle snapshots here
-
+            // TODO - Handle snapshots here / import VM CPU state
+            std::array<int, 32> registers;
+            // TODO - parse registers from snapshot file
+            std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers);
+            hypervisor.createVM(config, std::move(cpu));
+        } else {
+            hypervisor.createVM(config);
         }
-
-        hypervisor.createVM(config);
     }
 
     hypervisor.run();
