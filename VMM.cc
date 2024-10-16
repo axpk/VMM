@@ -283,8 +283,8 @@ public:
         loadInstructions();
     }
 
-    VM(Config c, std::unique_ptr<CPU> cpu) : config(std::move(c)), currentInstructionIndex(0) {
-        this->cpu = std::move(cpu);
+    VM(Config c, std::unique_ptr<CPU> snapshotCPU) : cpu(std::move(snapshotCPU)), config(std::move(c)), currentInstructionIndex(0) {
+        loadInstructions();
     }
 
     void loadInstructions() {
