@@ -108,6 +108,8 @@ bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& reg
             registers[registerIndex] = std::stoi(value);
         } else if (key == "pc") {
             pc = static_cast<uint32_t>(std::stoi(value));
+        } else if (key == "current_instruction_index") {
+            std::cerr << "TODO: current_instruction_index" << std::endl;
         } else {
             std::cerr << "Unknown snapshot key: " << key << std::endl;
         }
@@ -320,7 +322,9 @@ public:
         std::ifstream file(config.vm_binary);
         std::string line;
         while (std::getline(file, line)) {
-            instructions.emplace_back(parseInstruction(line));
+            if (!line.empty()) {
+                instructions.emplace_back(parseInstruction(line));
+            }
         }
     }
 
