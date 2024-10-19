@@ -58,7 +58,7 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     }
 
     std::string line;
-    while(getline(file, line)) {
+    while(std::getline(file, line)) {
         if (line.empty() || line[0] == '#') {
             continue;
         }
@@ -86,8 +86,34 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     return true;
 }
 
-bool parseSnapshotFile(const std::string& snapshotPath) {
-    // TODO
+bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& registers, uint32_t& pc) {
+    std::ifstream file(snapshotPath);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open snapshot file: " << snapshotPath << std::endl;
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+
+        size_t equalPos = line.find('=');
+        std::string key = line.substr(0, equalPos);
+        std::string value = line.substr(equalPos + 1);
+
+        if (key[0] == 'R') {
+            int registerIndex = std::stoi(key.substr(1));
+            registers[registerIndex] = std::stoi(value);
+        } else if (key == "pc") {
+            pc = static_cast<uint32_t>(std::stoi(value));
+        } else {
+            std::cerr << "Unknown snapshot key: " << key << std::endl;
+        }
+    }
+    file.close();
+    return true;
 }
 
 InstructionType getInstructionType(const std::string& opcode) {
@@ -148,9 +174,9 @@ Instruction parseInstruction(const std::string& line) {
     std::string operand;
     while(std::getline(iss, operand, ',')) {
         if (operand.find('$') != std::string::npos) {
-            inst.operands.push_back(parseRegister(operand));
+            inst.operands.emplace_back(parseRegister(operand));
         } else {
-            inst.operands.push_back(static_cast<int>(std::stoi(operand)));
+            inst.operands.emplace_back(static_cast<int>(std::stoi(operand)));
             if (inst.instructionType == InstructionType::OR) { // Convert OR to ORI internally if immediate value
                 inst.instructionType = InstructionType::ORI;
             }
@@ -161,12 +187,13 @@ Instruction parseInstruction(const std::string& line) {
 }
 
 class CPU {
-private:
+public:
+    int VMID = 0;
     std::array<int, 32> registers;
     uint32_t hi; // mult special register
     uint32_t lo; // mult special register
     uint32_t pc;
-public:
+
     CPU() : pc(0) {
         registers.fill(0);
     }
@@ -270,6 +297,7 @@ public:
         std::cout << "lo: " << lo << std::endl;
         std::cout << "PC: " << pc << std::endl;
     }
+
 };
 
 class VM {
@@ -279,6 +307,7 @@ private:
     std::vector<Instruction> instructions;
     int currentInstructionIndex;
 public:
+    int VMID = 0;
     VM(Config c) : config(std::move(c)), cpu(std::make_unique<CPU>()), currentInstructionIndex(0) {
         loadInstructions();
     }
@@ -291,34 +320,39 @@ public:
         std::ifstream file(config.vm_binary);
         std::string line;
         while (std::getline(file, line)) {
-            instructions.push_back(parseInstruction(line));
+            instructions.emplace_back(parseInstruction(line));
         }
     }
 
-    void loadSnapshot() { // TODO - load CPU state from file
-
-    }
-
     void snapshot(const std::string& outputPath) {
-        std::ofstream outFile(outputPath, std::ios::out);
+        std::ofstream outFile(outputPath);
 
         if (!outFile.is_open()) {
             std::cerr << "Couldn't write to file: " << outputPath << std::endl;
             return;
         }
 
-        // TODO - Finish here
+        for (int i = 0; i < cpu->registers.size(); i++) {
+            outFile << "R" << i << "=" << cpu->registers.at(i) << "\n";
+        }
 
+        outFile << "pc=" << cpu->pc << "\n";
+        // TODO - write instructions vector
+        outFile << "current_instruction_index=" << currentInstructionIndex << "\n";
+        for (int i = 0; i < instructions.size(); i++) {
+//            outFile << "inst" << i << "=" << instructions.at(i) << "\n";
+        }
+
+        outFile.close();
     }
 
     bool run(int contextSwitch) {
         for (int i = 0; i < contextSwitch && currentInstructionIndex < instructions.size(); i++) {
             if (instructions.at(currentInstructionIndex).instructionType == InstructionType::SNAPSHOT) {
                 snapshot(instructions.at(currentInstructionIndex).snapshotPath);
-                continue;
+            } else {
+                cpu->execute(instructions.at(currentInstructionIndex));
             }
-
-            cpu->execute(instructions.at(currentInstructionIndex));
             currentInstructionIndex++;
         }
         return currentInstructionIndex < instructions.size();
@@ -337,11 +371,11 @@ public:
     Hypervisor() = default;
     void createVM(const Config& config) {
        std::unique_ptr<VM> vm = std::make_unique<VM>(config);
-       vms.push_back(std::move(vm));
+       vms.emplace_back(std::move(vm));
     }
     void createVM(const Config& config, std::unique_ptr<CPU> cpu) {
         std::unique_ptr<VM> vm = std::make_unique<VM>(config, std::move(cpu));
-        vms.push_back(std::move(vm));
+        vms.emplace_back(std::move(vm));
     }
     void run() {
         bool allVMSCompleted = false;
@@ -393,7 +427,9 @@ int main(int argc, char* argv[]) {
         }
         if (!vmConfig.snapshotFile.empty()) {
             // TODO - Handle snapshots here / import VM CPU state
-            std::array<int, 32> registers;
+            std::array<int, 32> registers{};
+            uint32_t pc;
+            parseSnapshotFile(vmConfig.snapshotFile, registers, pc);
             // TODO - parse registers from snapshot file
             std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers);
             hypervisor.createVM(config, std::move(cpu));
