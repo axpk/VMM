@@ -114,7 +114,7 @@ InstructionType getInstructionType(const std::string& opcode) {
     if (it != opcodeMap.end()) {
         return it->second;
     } else {
-        std::cerr << "Couldn't parse MIPS opcode: " << it->first << std::endl;
+        std::cerr << "Couldn't parse MIPS opcode: " << opcode << std::endl;
         return InstructionType::INVALID;
     }
 }
