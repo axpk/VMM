@@ -402,7 +402,6 @@ int main(int argc, char* argv[]) {
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-        std::cout << arg << std::endl;
         VMFileConfig vmFileConfig;
         if (arg == "-v" && i + 1 < argc) { // VM Files
             vmFileConfig.vmFile = argv[++i];
