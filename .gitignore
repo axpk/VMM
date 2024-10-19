@@ -4,3 +4,7 @@ cmake-build-debug/
 VMM.out
 instructions_vm1
 instructions_vm2
+snapshot_vm1
+instructions_3
+instructions_2
+instructions_1
