@@ -48,6 +48,7 @@ struct Instruction {
 struct Config {
     int vm_exec_slice_in_instructions = 0;
     std::string vm_binary;
+    int vmID;
 };
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
@@ -67,8 +68,6 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
 
         std::string key = line.substr(0, equalPos);
         std::string value = line.substr(equalPos + 1);
-
-        std::cout << "Key: " << key << ", Value: " << value << std::endl;
 
         if (key == "vm_exec_slice_in_instructions") {
             try {
@@ -195,11 +194,11 @@ public:
     uint32_t lo; // mult special register
     uint32_t pc;
 
-    CPU() : pc(0) {
+    CPU(int vmID) : pc(0), VMID(vmID) {
         registers.fill(0);
     }
-    CPU(const std::array<int, 32>& regs) : pc(0) {
-        registers = regs; // todo - validate
+    CPU(const std::array<int, 32> regs, int vmID) : pc(0), VMID(vmID) {
+        registers = regs;
     }
     void execute(const Instruction& inst) {
         switch(inst.instructionType) {
@@ -289,6 +288,7 @@ public:
     }
 
     void dumpState() const {
+        std::cout << "==== VM: " << VMID << " =======" << std::endl;
         std::cout << "Processor State: " << std::endl;
 
         for (int i = 0; i < 32; i++) {
@@ -308,8 +308,7 @@ private:
     std::vector<Instruction> instructions;
     int currentInstructionIndex;
 public:
-    int VMID = 0;
-    VM(Config c) : config(std::move(c)), cpu(std::make_unique<CPU>()), currentInstructionIndex(0) {
+    VM(Config c) : config(std::move(c)), cpu(std::make_unique<CPU>(config.vmID)), currentInstructionIndex(0) {
         loadInstructions();
     }
 
@@ -383,8 +382,8 @@ public:
                 bool vmHasMoreInstructions = vms.at(i)->run(vms.at(i)->getConfig().vm_exec_slice_in_instructions);
                 if (vmHasMoreInstructions) {
                     allVMSCompleted = false;
+                    std::cout << "(VM: " << i + 1 << " running)" << std::endl;
                 }
-                std::cout << "Context switching from VM: " << i << std::endl;
             }
         }
         std::cout << "All VMs completed executing" << std::endl;
@@ -406,7 +405,7 @@ int main(int argc, char* argv[]) {
                     return 1;
                 }
                 vmFileConfig.snapshotFile = argv[i+2];
-                i += 2; // TODO - check if valid logic
+                i += 2;
             }
             vmFileConfigsVector.emplace_back(std::move(vmFileConfig));
         } else {
@@ -416,19 +415,20 @@ int main(int argc, char* argv[]) {
 
     Hypervisor hypervisor;
 
+    int vmID = 0;
     for (const auto& vmConfig : vmFileConfigsVector) {
+        vmID++;
         Config config;
+        config.vmID = vmID;
         if (!parseConfigFile(vmConfig.vmFile, config)) {
             std::cerr << "Error parsing config assembly file" << std::endl;
             return 1;
         }
         if (!vmConfig.snapshotFile.empty()) {
-            // TODO - Handle snapshots here / import VM CPU state
             std::array<int, 32> registers{};
             uint32_t pc;
             parseSnapshotFile(vmConfig.snapshotFile, registers, pc);
-            // TODO - parse registers from snapshot file
-            std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers);
+            std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers, config.vmID);
             hypervisor.createVM(config, std::move(cpu));
         } else {
             hypervisor.createVM(config);
