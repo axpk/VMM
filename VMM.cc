@@ -108,8 +108,7 @@ bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& reg
             registers[registerIndex] = std::stoi(value);
         } else if (key == "pc") {
             pc = static_cast<uint32_t>(std::stoi(value));
-        } else if (key == "current_instruction_index") {
-            std::cerr << "TODO: current_instruction_index" << std::endl;
+            std::cerr << "pc: " << value << std::endl;
         } else {
             std::cerr << "Unknown snapshot key: " << key << std::endl;
         }
@@ -341,11 +340,6 @@ public:
         }
 
         outFile << "pc=" << cpu->pc << "\n";
-        // TODO - write instructions vector
-        outFile << "current_instruction_index=" << currentInstructionIndex << "\n";
-        for (int i = 0; i < instructions.size(); i++) {
-//            outFile << "inst" << i << "=" << instructions.at(i) << "\n";
-        }
 
         outFile.close();
     }
