@@ -23,9 +23,11 @@ enum class InstructionType {
     MULT,
     DIV,
     AND,
+    ANDI,
     OR,
     ORI,
     XOR,
+    XORI,
     SLL,
     SRL,
     LI,
@@ -124,6 +126,7 @@ InstructionType getInstructionType(const std::string& opcode) {
             {"addu", InstructionType::ADDU},
             {"addiu", InstructionType::ADDIU},
             {"and", InstructionType::AND},
+            {"andi", InstructionType::ANDI},
             {"mul", InstructionType::MUL},
             {"mult", InstructionType::MULT},
             {"div", InstructionType::DIV},
@@ -133,7 +136,8 @@ InstructionType getInstructionType(const std::string& opcode) {
             {"srl", InstructionType::SRL},
             {"sub", InstructionType::SUB},
             {"subu", InstructionType::SUBU},
-            {"xor", InstructionType::XOR}
+            {"xor", InstructionType::XOR},
+            {"xori", InstructionType::XORI}
     };
 
     auto it = opcodeMap.find(opcode);
@@ -179,6 +183,8 @@ Instruction parseInstruction(const std::string& line) {
             inst.operands.emplace_back(static_cast<int>(std::stoi(operand)));
             if (inst.instructionType == InstructionType::OR) { // Convert OR to ORI internally if immediate value
                 inst.instructionType = InstructionType::ORI;
+            } else if (inst.instructionType == InstructionType::XOR) {
+                inst.instructionType = InstructionType::XORI;
             }
         }
     }
@@ -255,6 +261,9 @@ public:
             case InstructionType::AND:
                 registers[inst.operands[0]] = registers[inst.operands[1]] & registers[inst.operands[2]];
                 break;
+            case InstructionType::ANDI:
+                registers[inst.operands[0]] = registers[inst.operands[1]] & inst.operands[2];
+                break;
             case InstructionType::OR:
                 registers[inst.operands[0]] = registers[inst.operands[1]] | registers[inst.operands[2]];
                 break;
@@ -262,6 +271,9 @@ public:
                 registers[inst.operands[0]] = registers[inst.operands[1]] | inst.operands[2];
                 break;
             case InstructionType::XOR:
+                registers[inst.operands[0]] = registers[inst.operands[1]] ^ registers[inst.operands[2]];
+                break;
+            case InstructionType::XORI:
                 registers[inst.operands[0]] = registers[inst.operands[1]] ^ inst.operands[2];
                 break;
             case InstructionType::SLL:
@@ -297,6 +309,9 @@ public:
         std::cout << "hi: " << hi << std::endl;
         std::cout << "lo: " << lo << std::endl;
         std::cout << "PC: " << pc << std::endl;
+
+        std::cout << "======================" << std::endl;
+        std::cout << "\n";
     }
 
 };
