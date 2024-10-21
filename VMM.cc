@@ -87,7 +87,7 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     return true;
 }
 
-bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& registers, uint32_t& pc) {
+bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& registers, uint32_t& pc, std::string& binaryFile) {
     std::ifstream file(snapshotPath);
     if (!file.is_open()) {
         std::cerr << "Failed to open snapshot file: " << snapshotPath << std::endl;
@@ -109,7 +109,8 @@ bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& reg
             registers[registerIndex] = std::stoi(value);
         } else if (key == "pc") {
             pc = static_cast<uint32_t>(std::stoi(value));
-            std::cerr << "pc: " << value << std::endl;
+        } else if (key == "binary") {
+            binaryFile = value;
         } else {
             std::cerr << "Unknown snapshot key: " << key << std::endl;
         }
@@ -331,6 +332,11 @@ public:
         loadInstructions();
     }
 
+    VM(Config c, std::unique_ptr<CPU> snapshotCPU, int current_instruction_index) : cpu(std::move(snapshotCPU)),
+            config(std::move(c)), currentInstructionIndex(current_instruction_index) {
+        loadInstructions();
+    }
+
     void loadInstructions() {
         std::ifstream file(config.vm_binary);
         std::string line;
@@ -342,6 +348,7 @@ public:
     }
 
     void snapshot(const std::string& outputPath) {
+        std::cout << "Creating snapshot: " << outputPath << ", pc: " << cpu->pc << std::endl;
         std::ofstream outFile(outputPath);
 
         if (!outFile.is_open()) {
@@ -354,8 +361,10 @@ public:
         }
 
         outFile << "pc=" << cpu->pc << "\n";
+        outFile << "binary=" << config.vm_binary << "\n";
 
         outFile.close();
+        cpu->pc++;
     }
 
     bool run(int contextSwitch) {
@@ -387,6 +396,10 @@ public:
     }
     void createVM(const Config& config, std::unique_ptr<CPU> cpu) {
         std::unique_ptr<VM> vm = std::make_unique<VM>(config, std::move(cpu));
+        vms.emplace_back(std::move(vm));
+    }
+    void createVM(const Config& config, std::unique_ptr<CPU> cpu, int current_instruction_index) {
+        std::unique_ptr<VM> vm = std::make_unique<VM>(config, std::move(cpu), current_instruction_index);
         vms.emplace_back(std::move(vm));
     }
     void run() {
@@ -442,9 +455,16 @@ int main(int argc, char* argv[]) {
         if (!vmConfig.snapshotFile.empty()) {
             std::array<int, 32> registers{};
             uint32_t pc;
-            parseSnapshotFile(vmConfig.snapshotFile, registers, pc);
+            std::string binaryFile;
+            parseSnapshotFile(vmConfig.snapshotFile, registers, pc, binaryFile);
             std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers, config.vmID);
-            hypervisor.createVM(config, std::move(cpu));
+            pc++;
+            cpu->pc = pc;
+            if (config.vm_binary == binaryFile) { // Same assembly file -> continue from snapshot point
+                hypervisor.createVM(config, std::move(cpu), static_cast<int>(pc));
+            } else { // otherwise just use registers
+                hypervisor.createVM(config, std::move(cpu));
+            }
         } else {
             hypervisor.createVM(config);
         }
