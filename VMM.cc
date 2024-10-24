@@ -23,9 +23,11 @@ enum class InstructionType {
     MULT,
     DIV,
     AND,
+    ANDI,
     OR,
     ORI,
     XOR,
+    XORI,
     SLL,
     SRL,
     LI,
@@ -50,6 +52,7 @@ struct Instruction {
 struct Config {
     int vm_exec_slice_in_instructions = 0;
     std::string vm_binary;
+    int vmID;
 };
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
@@ -70,8 +73,6 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
         std::string key = line.substr(0, equalPos);
         std::string value = line.substr(equalPos + 1);
 
-        std::cout << "Key: " << key << ", Value: " << value << std::endl;
-
         if (key == "vm_exec_slice_in_instructions") {
             try {
                 config.vm_exec_slice_in_instructions = std::stoi(value);
@@ -88,7 +89,7 @@ bool parseConfigFile(const std::string& configPath, Config& config) {
     return true;
 }
 
-bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& registers, uint32_t& pc) {
+bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& registers, uint32_t& pc, std::string& binaryFile) {
     std::ifstream file(snapshotPath);
     if (!file.is_open()) {
         std::cerr << "Failed to open snapshot file: " << snapshotPath << std::endl;
@@ -110,7 +111,8 @@ bool parseSnapshotFile(const std::string& snapshotPath, std::array<int, 32>& reg
             registers[registerIndex] = std::stoi(value);
         } else if (key == "pc") {
             pc = static_cast<uint32_t>(std::stoi(value));
-            std::cerr << "pc: " << value << std::endl;
+        } else if (key == "binary") {
+            binaryFile = value;
         } else {
             std::cerr << "Unknown snapshot key: " << key << std::endl;
         }
@@ -127,6 +129,7 @@ InstructionType getInstructionType(const std::string& opcode) {
             {"addu", InstructionType::ADDU},
             {"addiu", InstructionType::ADDIU},
             {"and", InstructionType::AND},
+            {"andi", InstructionType::ANDI},
             {"mul", InstructionType::MUL},
             {"mult", InstructionType::MULT},
             {"div", InstructionType::DIV},
@@ -136,7 +139,8 @@ InstructionType getInstructionType(const std::string& opcode) {
             {"srl", InstructionType::SRL},
             {"sub", InstructionType::SUB},
             {"subu", InstructionType::SUBU},
-            {"xor", InstructionType::XOR}
+            {"xor", InstructionType::XOR},
+            {"xori", InstructionType::XORI}
     };
 
     auto it = opcodeMap.find(opcode);
@@ -189,6 +193,8 @@ Instruction parseInstruction(const std::string& line) {
             inst.operands.emplace_back(static_cast<int>(std::stoi(operand)));
             if (inst.instructionType == InstructionType::OR) { // Convert OR to ORI internally if immediate value
                 inst.instructionType = InstructionType::ORI;
+            } else if (inst.instructionType == InstructionType::XOR) {
+                inst.instructionType = InstructionType::XORI;
             }
         }
     }
@@ -204,10 +210,10 @@ public:
     uint32_t lo; // mult special register
     uint32_t pc;
 
-    CPU() : pc(0) {
+    CPU(int vmID) : pc(0), VMID(vmID) {
         registers.fill(0);
     }
-    CPU(const std::array<int, 32>& regs) : pc(0) {
+    CPU(const std::array<int, 32> regs, int vmID) : pc(0), VMID(vmID) {
         registers = regs;
     }
     void execute(const Instruction& inst) {
@@ -265,6 +271,9 @@ public:
             case InstructionType::AND:
                 registers[inst.operands[0]] = registers[inst.operands[1]] & registers[inst.operands[2]];
                 break;
+            case InstructionType::ANDI:
+                registers[inst.operands[0]] = registers[inst.operands[1]] & inst.operands[2];
+                break;
             case InstructionType::OR:
                 registers[inst.operands[0]] = registers[inst.operands[1]] | registers[inst.operands[2]];
                 break;
@@ -272,6 +281,9 @@ public:
                 registers[inst.operands[0]] = registers[inst.operands[1]] | inst.operands[2];
                 break;
             case InstructionType::XOR:
+                registers[inst.operands[0]] = registers[inst.operands[1]] ^ registers[inst.operands[2]];
+                break;
+            case InstructionType::XORI:
                 registers[inst.operands[0]] = registers[inst.operands[1]] ^ inst.operands[2];
                 break;
             case InstructionType::SLL:
@@ -298,6 +310,7 @@ public:
     }
 
     void dumpState() const {
+        std::cout << "==== VM: " << VMID << " =======" << std::endl;
         std::cout << "Processor State: " << std::endl;
 
         for (int i = 0; i < 32; i++) {
@@ -306,6 +319,9 @@ public:
         std::cout << "hi: " << hi << std::endl;
         std::cout << "lo: " << lo << std::endl;
         std::cout << "PC: " << pc << std::endl;
+
+        std::cout << "======================" << std::endl;
+        std::cout << "\n";
     }
 
 };
@@ -317,12 +333,16 @@ private:
     std::vector<Instruction> instructions;
     int currentInstructionIndex;
 public:
-    int VMID = 0;
-    VM(Config c) : config(std::move(c)), cpu(std::make_unique<CPU>()), currentInstructionIndex(0) {
+    VM(Config c) : config(std::move(c)), cpu(std::make_unique<CPU>(config.vmID)), currentInstructionIndex(0) {
         loadInstructions();
     }
 
     VM(Config c, std::unique_ptr<CPU> snapshotCPU) : cpu(std::move(snapshotCPU)), config(std::move(c)), currentInstructionIndex(0) {
+        loadInstructions();
+    }
+
+    VM(Config c, std::unique_ptr<CPU> snapshotCPU, int current_instruction_index) : cpu(std::move(snapshotCPU)),
+            config(std::move(c)), currentInstructionIndex(current_instruction_index) {
         loadInstructions();
     }
 
@@ -337,6 +357,7 @@ public:
     }
 
     void snapshot(const std::string& outputPath) {
+        std::cout << "Creating snapshot: " << outputPath << ", pc: " << cpu->pc << std::endl;
         std::ofstream outFile(outputPath);
 
         if (!outFile.is_open()) {
@@ -349,8 +370,10 @@ public:
         }
 
         outFile << "pc=" << cpu->pc << "\n";
+        outFile << "binary=" << config.vm_binary << "\n";
 
         outFile.close();
+        cpu->pc++;
     }
 
     void migrate(const std::string& outputPath) {
@@ -390,6 +413,10 @@ public:
         std::unique_ptr<VM> vm = std::make_unique<VM>(config, std::move(cpu));
         vms.emplace_back(std::move(vm));
     }
+    void createVM(const Config& config, std::unique_ptr<CPU> cpu, int current_instruction_index) {
+        std::unique_ptr<VM> vm = std::make_unique<VM>(config, std::move(cpu), current_instruction_index);
+        vms.emplace_back(std::move(vm));
+    }
     void run() {
         bool allVMSCompleted = false;
         while (!allVMSCompleted) {
@@ -398,8 +425,8 @@ public:
                 bool vmHasMoreInstructions = vms.at(i)->run(vms.at(i)->getConfig().vm_exec_slice_in_instructions);
                 if (vmHasMoreInstructions) {
                     allVMSCompleted = false;
+                    std::cout << "(VM: " << i + 1 << " running)" << std::endl;
                 }
-                std::cout << "Context switching from VM: " << i << std::endl;
             }
         }
         std::cout << "All VMs completed executing" << std::endl;
@@ -431,8 +458,11 @@ int main(int argc, char* argv[]) {
 
     Hypervisor hypervisor;
 
+    int vmID = 0;
     for (const auto& vmConfig : vmFileConfigsVector) {
+        vmID++;
         Config config;
+        config.vmID = vmID;
         if (!parseConfigFile(vmConfig.vmFile, config)) {
             std::cerr << "Error parsing config assembly file" << std::endl;
             return 1;
@@ -440,9 +470,16 @@ int main(int argc, char* argv[]) {
         if (!vmConfig.snapshotFile.empty()) {
             std::array<int, 32> registers{};
             uint32_t pc;
-            parseSnapshotFile(vmConfig.snapshotFile, registers, pc);
-            std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers);
-            hypervisor.createVM(config, std::move(cpu));
+            std::string binaryFile;
+            parseSnapshotFile(vmConfig.snapshotFile, registers, pc, binaryFile);
+            std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers, config.vmID);
+            pc++;
+            cpu->pc = pc;
+            if (config.vm_binary == binaryFile) { // Same assembly file -> continue from snapshot point
+                hypervisor.createVM(config, std::move(cpu), static_cast<int>(pc));
+            } else { // otherwise just use registers
+                hypervisor.createVM(config, std::move(cpu));
+            }
         } else {
             hypervisor.createVM(config);
         }
