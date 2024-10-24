@@ -31,6 +31,7 @@ enum class InstructionType {
     LI,
     DUMP_PROCESSOR_STATE,
     SNAPSHOT,
+    MIGRATE,
     INVALID
 };
 
@@ -43,6 +44,7 @@ struct Instruction {
     InstructionType instructionType = InstructionType::INVALID;
     std::vector<int> operands;
     std::string snapshotPath;
+    std::string migratePath;
 };
 
 struct Config {
@@ -170,6 +172,13 @@ Instruction parseInstruction(const std::string& line) {
         return inst;
     }
 
+    if (line.find("MIGRATE") != std::string::npos) {
+        inst.instructionType = InstructionType::MIGRATE;
+        auto keyLocation = line.find(' ');
+        inst.migratePath = line.substr(keyLocation + 1);
+        return inst;
+    }
+
     inst.instructionType = getInstructionType(opcode);
 
     std::string operand;
@@ -199,7 +208,7 @@ public:
         registers.fill(0);
     }
     CPU(const std::array<int, 32>& regs) : pc(0) {
-        registers = regs; // todo - validate
+        registers = regs;
     }
     void execute(const Instruction& inst) {
         switch(inst.instructionType) {
@@ -344,10 +353,16 @@ public:
         outFile.close();
     }
 
+    void migrate(const std::string& outputPath) {
+        // TODO - add migration logic to IP or hostname
+    }
+
     bool run(int contextSwitch) {
         for (int i = 0; i < contextSwitch && currentInstructionIndex < instructions.size(); i++) {
             if (instructions.at(currentInstructionIndex).instructionType == InstructionType::SNAPSHOT) {
                 snapshot(instructions.at(currentInstructionIndex).snapshotPath);
+            } else if (instructions.at(currentInstructionIndex).instructionType == InstructionType::MIGRATE) {
+                migrate(instructions.at(currentInstructionIndex).migratePath);
             } else {
                 cpu->execute(instructions.at(currentInstructionIndex));
             }
@@ -406,7 +421,7 @@ int main(int argc, char* argv[]) {
                     return 1;
                 }
                 vmFileConfig.snapshotFile = argv[i+2];
-                i += 2; // TODO - check if valid logic
+                i += 2;
             }
             vmFileConfigsVector.emplace_back(std::move(vmFileConfig));
         } else {
@@ -423,11 +438,9 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         if (!vmConfig.snapshotFile.empty()) {
-            // TODO - Handle snapshots here / import VM CPU state
             std::array<int, 32> registers{};
             uint32_t pc;
             parseSnapshotFile(vmConfig.snapshotFile, registers, pc);
-            // TODO - parse registers from snapshot file
             std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers);
             hypervisor.createVM(config, std::move(cpu));
         } else {
