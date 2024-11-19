@@ -40,6 +40,7 @@ enum class InstructionType {
 struct VMFileConfig {
     std::string vmFile;
     std::string snapshotFile;
+    int port;
 };
 
 struct Instruction {
@@ -53,6 +54,7 @@ struct Config {
     int vm_exec_slice_in_instructions = 0;
     std::string vm_binary;
     int vmID;
+    int port;
 };
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
@@ -178,8 +180,22 @@ Instruction parseInstruction(const std::string& line) {
 
     if (line.find("MIGRATE") != std::string::npos) {
         inst.instructionType = InstructionType::MIGRATE;
-        auto keyLocation = line.find(' ');
-        inst.migratePath = line.substr(keyLocation + 1);
+        std::string ipPort;
+        iss >> ipPort;
+        size_t colonPos = ipPort.find(':');
+        if (colonPos != std::string::npos) {
+            std::string ip = ipPort.substr(0, colonPos);
+            std::string portStr = ipPort.substr(colonPos + 1);
+            try {
+                int port = std::stoi(portStr);
+                inst.operands.emplace_back(port);
+                inst.migratePath = ip;
+            } catch (const std::exception& e) {
+                std::cerr << "Invalid port in MIGRATE instruction" << std::endl;
+            }
+        } else {
+            std::cerr << "Invalid MIGRATE instruction" << std::endl;
+        }
         return inst;
     }
 
@@ -417,7 +433,7 @@ public:
         std::unique_ptr<VM> vm = std::make_unique<VM>(config, std::move(cpu), current_instruction_index);
         vms.emplace_back(std::move(vm));
     }
-    void run() {
+    void run() { // Instructions first, then listening mode
         bool allVMSCompleted = false;
         while (!allVMSCompleted) {
             allVMSCompleted = true;
@@ -429,12 +445,17 @@ public:
                 }
             }
         }
-        std::cout << "All VMs completed executing" << std::endl;
+
+        std::cout << "No instructions. Listening..." << std::endl;
+        while (true) {
+            // TODO - add listening with sockets
+        }
     }
 };
 
 int main(int argc, char* argv[]) {
     std::vector<VMFileConfig> vmFileConfigsVector;
+    int port = 0; // Default port
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -451,8 +472,11 @@ int main(int argc, char* argv[]) {
                 i += 2;
             }
             vmFileConfigsVector.emplace_back(std::move(vmFileConfig));
+        } else if (arg == "-p" && i + 1 < argc) {
+            port = std::stoi(argv[++i]);
         } else {
-            std::cerr << "No filename given after -v flag" << std::endl;
+            std::cerr << "No arg given after flag" << arg << std::endl;
+            return 1; // TODO - check if valid behavior
         }
     }
 
@@ -463,6 +487,7 @@ int main(int argc, char* argv[]) {
         vmID++;
         Config config;
         config.vmID = vmID;
+        config.port = port;
         if (!parseConfigFile(vmConfig.vmFile, config)) {
             std::cerr << "Error parsing config assembly file" << std::endl;
             return 1;
