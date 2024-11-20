@@ -40,7 +40,6 @@ enum class InstructionType {
 struct VMFileConfig {
     std::string vmFile;
     std::string snapshotFile;
-    int port;
 };
 
 struct Instruction {
@@ -54,7 +53,6 @@ struct Config {
     int vm_exec_slice_in_instructions = 0;
     std::string vm_binary;
     int vmID;
-    int port;
 };
 
 bool parseConfigFile(const std::string& configPath, Config& config) {
@@ -445,8 +443,10 @@ public:
                 }
             }
         }
+    }
 
-        std::cout << "No instructions. Listening..." << std::endl;
+    void listen(const int port) {
+        std::cout << "Listening on port " << port << "..." << std::endl;
         while (true) {
             // TODO - add listening with sockets
         }
@@ -455,6 +455,7 @@ public:
 
 int main(int argc, char* argv[]) {
     std::vector<VMFileConfig> vmFileConfigsVector;
+    bool listeningMode = false;
     int port = 0; // Default port
 
     for (int i = 1; i < argc; i++) {
@@ -474,6 +475,7 @@ int main(int argc, char* argv[]) {
             vmFileConfigsVector.emplace_back(std::move(vmFileConfig));
         } else if (arg == "-p" && i + 1 < argc) {
             port = std::stoi(argv[++i]);
+            listeningMode = true;
         } else {
             std::cerr << "No arg given after flag" << arg << std::endl;
             return 1; // TODO - check if valid behavior
@@ -482,35 +484,37 @@ int main(int argc, char* argv[]) {
 
     Hypervisor hypervisor;
 
-    int vmID = 0;
-    for (const auto& vmConfig : vmFileConfigsVector) {
-        vmID++;
-        Config config;
-        config.vmID = vmID;
-        config.port = port;
-        if (!parseConfigFile(vmConfig.vmFile, config)) {
-            std::cerr << "Error parsing config assembly file" << std::endl;
-            return 1;
-        }
-        if (!vmConfig.snapshotFile.empty()) {
-            std::array<int, 32> registers{};
-            uint32_t pc;
-            std::string binaryFile;
-            parseSnapshotFile(vmConfig.snapshotFile, registers, pc, binaryFile);
-            std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers, config.vmID);
-            pc++;
-            cpu->pc = pc;
-            if (config.vm_binary == binaryFile) { // Same assembly file -> continue from snapshot point
-                hypervisor.createVM(config, std::move(cpu), static_cast<int>(pc));
-            } else { // otherwise just use registers
-                hypervisor.createVM(config, std::move(cpu));
+    if (listeningMode) {
+        hypervisor.listen(port);
+    } else {
+        int vmID = 0;
+        for (const auto& vmConfig : vmFileConfigsVector) {
+            vmID++;
+            Config config;
+            config.vmID = vmID;
+            if (!parseConfigFile(vmConfig.vmFile, config)) {
+                std::cerr << "Error parsing config assembly file" << std::endl;
+                return 1;
             }
-        } else {
-            hypervisor.createVM(config);
+            if (!vmConfig.snapshotFile.empty()) {
+                std::array<int, 32> registers{};
+                uint32_t pc;
+                std::string binaryFile;
+                parseSnapshotFile(vmConfig.snapshotFile, registers, pc, binaryFile);
+                std::unique_ptr<CPU> cpu = std::make_unique<CPU>(registers, config.vmID);
+                pc++;
+                cpu->pc = pc;
+                if (config.vm_binary == binaryFile) { // Same assembly file -> continue from snapshot point
+                    hypervisor.createVM(config, std::move(cpu), static_cast<int>(pc));
+                } else { // otherwise just use registers
+                    hypervisor.createVM(config, std::move(cpu));
+                }
+            } else {
+                hypervisor.createVM(config);
+            }
         }
+        hypervisor.run();
     }
-
-    hypervisor.run();
 
     return 0;
 }
