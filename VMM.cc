@@ -12,6 +12,15 @@
 #include <unordered_map>
 #include <sstream>
 
+// Sockets
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <errno.h>
+#include <mutex>
+
 enum class InstructionType {
     ADD,
     ADDU,
@@ -252,6 +261,7 @@ public:
                 uint32_t op1 = static_cast<uint32_t>(registers[inst.operands[1]]);
                 uint32_t op2 = static_cast<uint32_t>(registers[inst.operands[2]]);
                 registers[inst.operands[0]] = static_cast<int>(op1) - static_cast<int>(op2);
+                break;
             }
             case InstructionType::ADDIU: {
                 uint32_t op1 = static_cast<uint32_t>(registers[inst.operands[1]]);
@@ -323,6 +333,53 @@ public:
         pc++;
     }
 
+    std::string serialize() const {
+        std::ostringstream oss;
+        oss << "VMID=" << VMID << "\n";
+        oss << "pc=" << pc << "\n";
+        for (int i = 0; i < 32; i++) {
+            oss << "R" << i << "=" << registers[i] << "\n";
+        }
+        oss << "lo=" << lo << "\n";
+        oss << "hi=" << hi << "\n";
+        return oss.str();
+    }
+
+    void deserialize(const std::string& data) {
+        std::istringstream iss(data);
+        std::string line;
+        while (std::getline(iss, line)) {
+            if (line.empty() || line[0] == '#') {
+                continue;
+            }
+
+            size_t eqPos = line.find('=');
+            if (eqPos == std::string::npos) {
+                continue;
+            }
+
+            std::string key = line.substr(0, eqPos);
+            std::string value = line.substr(eqPos + 1);
+
+            if (key == "VMID") {
+                VMID = std::stoi(value);
+            } else if (key == "pc") {
+                pc = static_cast<uint32_t>(std::stoi(value));
+            } else if (key.find("R") == 0) {
+                int regNum = std::stoi(key.substr(1));
+                if (regNum >= 0 && regNum < 32) {
+                    registers[regNum] = std::stoi(value);
+                }
+            } else if (key == "lo") {
+                lo = static_cast<uint32_t>(std::stoi(value));
+            } else if (key == "hi") {
+                hi = static_cast<uint32_t>(std::stoi(value));
+            } else {
+                std::cout << "Couldn't deserialize key: " << key << std::endl;
+            }
+        }
+    }
+
     void dumpState() const {
         std::cout << "==== VM: " << VMID << " =======" << std::endl;
         std::cout << "Processor State: " << std::endl;
@@ -346,6 +403,8 @@ private:
     std::unique_ptr<CPU> cpu;
     std::vector<Instruction> instructions;
     int currentInstructionIndex;
+    bool migrated = false;
+
 public:
     VM(Config c) : config(std::move(c)), cpu(std::make_unique<CPU>(config.vmID)), currentInstructionIndex(0) {
         loadInstructions();
@@ -390,8 +449,251 @@ public:
         cpu->pc++;
     }
 
-    void migrate(const std::string& outputPath) {
+    std::string serialize() const {
+        std::ostringstream oss;
+        oss << "curr_inst_index=" << currentInstructionIndex << "\n";
+        oss << "slice_instructions=" << config.vm_exec_slice_in_instructions << "\n";
+        oss << cpu->serialize();
+
+        // serialize instructions
+        for (int i = 0; i < instructions.size(); i++) {
+            oss << "instruction=";
+            oss << instToString(instructions[i]) << "\n";
+        }
+
+        return oss.str();
+    }
+
+    std::string instToString(const Instruction& inst) const {
+        std::ostringstream oss;
+
+        // serialize inst type
+        switch(inst.instructionType) {
+            // ARITHMETIC
+            case InstructionType::ADD:
+                oss << "ADD";
+                break;
+            case InstructionType::SUB:
+                oss << "SUB";
+                break;
+            case InstructionType::ADDI:
+                oss << "ADDI";
+                break;
+            case InstructionType::ADDU: {
+                oss << "ADDU";
+                break;
+            }
+            case InstructionType::SUBU: {
+                oss << "SUBU";
+                break;
+            }
+            case InstructionType::ADDIU: {
+                oss << "ADDIU";
+                break;
+            }
+            case InstructionType::MUL: { // Result in 32-bit integer
+                oss << "MUL";
+                break;
+            }
+            case InstructionType::MULT: {
+                oss << "MULT";
+                break;
+            }
+            case InstructionType::DIV: {
+                oss << "DIV";
+                break;
+            }
+
+            // LOGICAL
+            case InstructionType::AND:
+                oss << "AND";
+                break;
+            case InstructionType::ANDI:
+                oss << "ANDI";
+                break;
+            case InstructionType::OR:
+                oss << "OR";
+                break;
+            case InstructionType::ORI:
+                oss << "ORI";
+                break;
+            case InstructionType::XOR:
+                oss << "XOR";
+                break;
+            case InstructionType::XORI:
+                oss << "XORI";
+                break;
+            case InstructionType::SLL:
+                oss << "SLL";
+                break;
+            case InstructionType::SRL:
+                oss << "SRL";
+                break;
+
+            // DATA
+            case InstructionType::LI:
+                oss << "LI";
+                break;
+
+            // SPECIAL
+            case InstructionType::DUMP_PROCESSOR_STATE:
+                oss << "DUMP_PROCESSOR_STATE";
+                break;
+
+            case InstructionType::MIGRATE:
+                oss << "MIGRATE";
+                break;
+
+            case InstructionType::SNAPSHOT:
+                oss << "SNAPSHOT";
+                break;
+
+            default:
+                std::cerr << "Invalid MIPS inst being serialized" << std::endl;
+        }
+
+        // serialize operands
+        for (size_t j = 0; j < inst.operands.size(); j++) {
+            oss << "," << inst.operands[j];
+        }
+
+        if (inst.instructionType == InstructionType::MIGRATE) {
+            oss << "," << inst.migratePath;
+        } else if (inst.instructionType == InstructionType::SNAPSHOT) {
+            oss << "," << inst.snapshotPath;
+        }
+
+        return oss.str();
+
+    }
+
+    void deserialize(const std::string& data) {
+        std::istringstream iss(data);
+        std::string line;
+        while (std::getline(iss, line)) {
+            if (line.empty() || line[0] == '#') {
+                continue;
+            }
+
+            size_t eqPos = line.find('=');
+            if (eqPos == std::string::npos) {
+                continue;
+            }
+
+            std::string key = line.substr(0, eqPos);
+            std::string value = line.substr(eqPos + 1);
+
+            if (key == "curr_inst_index") {
+                currentInstructionIndex = std::stoi(value);
+            } else if (key == "slice_instructions") {
+                config.vm_exec_slice_in_instructions = std::stoi(value);
+            } else if (key == "instruction") {
+                std::string instStr = line.substr(std::string("instruction=").length());
+                Instruction inst = stringToInst(instStr);
+                instructions.emplace_back(inst);
+            } else {
+                std::string remainingData = line + "\n";
+                while (std::getline(iss, line)) {
+                    remainingData += line + "\n";
+                }
+                cpu->deserialize(remainingData);
+                break;
+            }
+        }
+    }
+
+    Instruction stringToInst(const std::string& instStr) const {
+        Instruction inst;
+        std::istringstream iss(instStr);
+        std::string token;
+
+        if (!std::getline(iss, token, ',')) {
+            inst.instructionType = InstructionType::INVALID;
+            return inst;
+        }
+
+        inst.instructionType = getInstructionType(token);
+
+        while (std::getline(iss, token, ',')) {
+            if (inst.instructionType == InstructionType::MIGRATE) {
+                inst.migratePath = token;
+                break;
+            } else if (inst.instructionType == InstructionType::SNAPSHOT) {
+                inst.snapshotPath = token;
+                break;
+            } else {
+                try {
+                    inst.operands.emplace_back(std::stoi(token));
+                } catch (const std::exception& e) {
+                    std::cerr << "Invalid operand in inst" << instStr << std::endl;
+                }
+            }
+        }
+        return inst;
+    }
+
+    void migrate(const std::string& target) {
         // TODO - add migration logic to IP or hostname
+        size_t colonPos = target.find(':');
+        if (colonPos == std::string::npos) {
+            std::cerr << "Invalid migration format. Expecting IP:PORT" << std::endl;
+            return;
+        }
+
+        // IP and Port
+        std::string ip = target.substr(0, colonPos);
+        int port = std::stoi(target.substr(colonPos + 1)); // TODO - add support for brackets
+
+        // Serialize VM
+        std::string serializedState = serialize();
+        uint32_t dataSize = htonl(static_cast<uint32_t>(serializedState.size()));
+
+        // Create socket
+        int sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 0) {
+            perror("socket");
+            return;
+        }
+
+        // Server address
+        struct sockaddr_in serverAddr;
+        serverAddr.sin_family = AF_INET;
+        serverAddr.sin_port = htons(port);
+        if (inet_pton(AF_INET, ip.c_str(), &serverAddr.sin_addr) <= 0) {
+            std::cerr << "Invalid IP addr format: " << ip << std::endl;
+            close(sock);
+            return;
+        }
+
+        // connect to target hypervisor
+        if (connect(sock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
+            perror("connect");
+            close(sock);
+            return;
+        }
+
+        // send data size
+        if (send(sock, &dataSize, sizeof(dataSize), 0) != sizeof(dataSize)) {
+            perror("send data size");
+            close(sock);
+            return;
+        }
+
+        // send serialized data
+        size_t totalSent = 0;
+        while (totalSent < serializedState.size()) {
+            ssize_t sent = send(sock, serializedState.c_str() + totalSent, serializedState.size() - totalSent, 0);
+            if (sent < 0) {
+                perror("send data");
+                close(sock);
+                return;
+            }
+            totalSent += sent;
+        }
+
+        std::cout << "VM " << cpu->VMID << " migrated to " << ip << ":" << port << std::endl;
+        close(sock);
+        migrated = true;
     }
 
     bool run(int contextSwitch) {
@@ -400,18 +702,31 @@ public:
                 snapshot(instructions.at(currentInstructionIndex).snapshotPath);
             } else if (instructions.at(currentInstructionIndex).instructionType == InstructionType::MIGRATE) {
                 migrate(instructions.at(currentInstructionIndex).migratePath);
+                migrated = true;
+                break;
             } else {
                 cpu->execute(instructions.at(currentInstructionIndex));
             }
             currentInstructionIndex++;
         }
-        return currentInstructionIndex < instructions.size();
+        return !migrated && currentInstructionIndex < instructions.size();
+    }
+
+    bool isMigrated() const {
+        return migrated;
+    }
+
+    int getCurrInstIndex() const {
+        return currentInstructionIndex;
     }
 
     Config getConfig() {
         return this->config;
     }
 
+    std::unique_ptr<CPU> releaseCPU() {
+        return std::move(cpu);
+    }
 };
 
 class Hypervisor {
@@ -445,11 +760,100 @@ public:
         }
     }
 
-    void listen(const int port) {
-        std::cout << "Listening on port " << port << "..." << std::endl;
-        while (true) {
-            // TODO - add listening with sockets
+    void listenMigration(int port) {
+
+        // create listen socket
+        int listenSock = socket(AF_INET, SOCK_STREAM, 0);
+        if (listenSock < 0) {
+            perror("socket");
+            return;
         }
+
+        int opt = 1;
+        if (setsockopt(listenSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+            perror("setsockopt");
+            close(listenSock);
+            return;
+        }
+
+        // bind to port
+        struct sockaddr_in serverAddr;
+        serverAddr.sin_family = AF_INET;
+        serverAddr.sin_addr.s_addr = INADDR_ANY; // listen on all interfaces
+        serverAddr.sin_port = htons(port);
+
+        if (bind(listenSock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
+            perror("bind");
+            close(listenSock);
+            return;
+        }
+
+        // start listening
+        if (listen(listenSock, 1) < 0) {
+            perror("listen");
+            close(listenSock);
+            return;
+        }
+
+        std::cout << "Hypervisor is listening on port " << port << " for migration" << std::endl;
+
+        // accept connection
+        struct sockaddr_in clientAddr;
+        socklen_t addrLen = sizeof(clientAddr);
+        int clientSock = accept(listenSock, (struct sockaddr*)&clientAddr, &addrLen);
+        if (clientSock < 0) {
+            perror("accept");
+            close(listenSock);
+            return;
+        }
+
+        std::cout << "Accepted migration connection..." << std::endl;
+
+        // receive data size
+        uint32_t dataSizeNet;
+        ssize_t received = recv(clientSock, &dataSizeNet, sizeof(dataSizeNet), 0);
+        if (received != sizeof(dataSizeNet)) {
+            std::cerr << "Failed to receive data size." << std::endl;
+            close(clientSock);
+            close(listenSock);
+            return;
+        }
+
+        uint32_t dataSize = ntohl(dataSizeNet);
+
+        // receive serialized data
+        std::string serializedData(dataSize, '\0');
+        size_t totalReceived = 0;
+        while (totalReceived < dataSize) {
+            ssize_t recvBytes = recv(clientSock, &serializedData[totalReceived], dataSize - totalReceived, 0);
+            if (recvBytes <= 0) {
+                std::cerr << "Failed to receive serialized data" << std::endl;
+                break;
+            }
+            totalReceived += recvBytes;
+        }
+
+        if (totalReceived != dataSize) {
+            std::cerr << "Incomplete data received" << std::endl;
+            close(clientSock);
+            close(listenSock);
+            return;
+        }
+
+        // Deserialize VM
+        std::unique_ptr<CPU> cpu = std::make_unique<CPU>(0); // temp VMID
+        VM migratedVM(Config(), std::move(cpu));
+        migratedVM.deserialize(serializedData);
+
+        Config config = migratedVM.getConfig();
+
+        std::unique_ptr<VM> newVM = std::make_unique<VM>(config, migratedVM.releaseCPU(), migratedVM.getCurrInstIndex());
+        vms.emplace_back(std::move(newVM));
+
+        std::cout << "Migrated VM " << config.vmID << " has been received and added to hypervisor" << std::endl;
+
+        close(clientSock);
+        close(listenSock);
     }
 };
 
@@ -485,7 +889,7 @@ int main(int argc, char* argv[]) {
     Hypervisor hypervisor;
 
     if (listeningMode) {
-        hypervisor.listen(port);
+        hypervisor.listenMigration(port);
     } else {
         int vmID = 0;
         for (const auto& vmConfig : vmFileConfigsVector) {
