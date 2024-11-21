@@ -633,16 +633,23 @@ public:
     }
 
     void migrate(const std::string& target) {
-        std::cout << target << std::endl;
-        size_t colonPos = target.find(':');
+        std::string targetStr = target;
+
+        if (!targetStr.empty() && targetStr.front() == '[' && targetStr.back() == ']') {
+            targetStr = targetStr.substr(1, targetStr.size() - 2); // stripping brackets from ip:port
+        }
+
+        std::cout << "Migration target: " << target << std::endl;
+
+        size_t colonPos = targetStr.find(':');
         if (colonPos == std::string::npos) {
             std::cerr << "Invalid migration format. Expecting IP:PORT" << std::endl;
             return;
         }
 
         // IP and Port
-        std::string ip = target.substr(0, colonPos);
-        int port = std::stoi(target.substr(colonPos + 1)); // TODO - add support for brackets
+        std::string ip = targetStr.substr(0, colonPos);
+        int port = std::stoi(targetStr.substr(colonPos + 1)); // TODO - add support for brackets
 
         // Serialize VM
         std::string serializedState = serialize();
@@ -709,7 +716,7 @@ public:
             currentInstructionIndex++;
         }
         return !migrated && currentInstructionIndex < instructions.size(); // end process after migration on sender
-//        return currentInstructionIndex < instructions.size();
+//        return currentInstructionIndex < instructions.size(); // continue process after migration
     }
 
     bool isMigrated() const {
