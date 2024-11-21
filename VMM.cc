@@ -149,7 +149,10 @@ InstructionType getInstructionType(const std::string& opcode) {
             {"sub", InstructionType::SUB},
             {"subu", InstructionType::SUBU},
             {"xor", InstructionType::XOR},
-            {"xori", InstructionType::XORI}
+            {"xori", InstructionType::XORI},
+            {"MIGRATE", InstructionType::MIGRATE},
+            {"SNAPSHOT", InstructionType::SNAPSHOT},
+            {"DUMP_PROCESSOR_STATE", InstructionType::DUMP_PROCESSOR_STATE}
     };
 
     auto it = opcodeMap.find(opcode);
@@ -189,20 +192,7 @@ Instruction parseInstruction(const std::string& line) {
         inst.instructionType = InstructionType::MIGRATE;
         std::string ipPort;
         iss >> ipPort;
-        size_t colonPos = ipPort.find(':');
-        if (colonPos != std::string::npos) {
-            std::string ip = ipPort.substr(0, colonPos);
-            std::string portStr = ipPort.substr(colonPos + 1);
-            try {
-                int port = std::stoi(portStr);
-                inst.operands.emplace_back(port);
-                inst.migratePath = ip;
-            } catch (const std::exception& e) {
-                std::cerr << "Invalid port in MIGRATE instruction" << std::endl;
-            }
-        } else {
-            std::cerr << "Invalid MIGRATE instruction" << std::endl;
-        }
+        inst.migratePath = ipPort;
         return inst;
     }
 
@@ -333,6 +323,10 @@ public:
         pc++;
     }
 
+    void changeVMID(int vmID) {
+        this->VMID = vmID;
+    }
+
     std::string serialize() const {
         std::ostringstream oss;
         oss << "VMID=" << VMID << "\n";
@@ -429,6 +423,14 @@ public:
         }
     }
 
+    const std::vector<Instruction> getInstructions() const {
+        return instructions;
+    }
+
+    void changeVMID(int vmID) {
+        cpu->changeVMID(vmID);
+    }
+
     void snapshot(const std::string& outputPath) {
         std::cout << "Creating snapshot: " << outputPath << ", pc: " << cpu->pc << std::endl;
         std::ofstream outFile(outputPath);
@@ -451,15 +453,16 @@ public:
 
     std::string serialize() const {
         std::ostringstream oss;
-        oss << "curr_inst_index=" << currentInstructionIndex << "\n";
+        oss << "curr_inst_index=" << currentInstructionIndex + 1 << "\n";
         oss << "slice_instructions=" << config.vm_exec_slice_in_instructions << "\n";
-        oss << cpu->serialize();
 
         // serialize instructions
         for (int i = 0; i < instructions.size(); i++) {
             oss << "instruction=";
             oss << instToString(instructions[i]) << "\n";
         }
+
+        oss << cpu->serialize();
 
         return oss.str();
     }
@@ -471,68 +474,68 @@ public:
         switch(inst.instructionType) {
             // ARITHMETIC
             case InstructionType::ADD:
-                oss << "ADD";
+                oss << "add";
                 break;
             case InstructionType::SUB:
-                oss << "SUB";
+                oss << "sub";
                 break;
             case InstructionType::ADDI:
-                oss << "ADDI";
+                oss << "addi";
                 break;
             case InstructionType::ADDU: {
-                oss << "ADDU";
+                oss << "addu";
                 break;
             }
             case InstructionType::SUBU: {
-                oss << "SUBU";
+                oss << "subu";
                 break;
             }
             case InstructionType::ADDIU: {
-                oss << "ADDIU";
+                oss << "addiu";
                 break;
             }
             case InstructionType::MUL: { // Result in 32-bit integer
-                oss << "MUL";
+                oss << "mul";
                 break;
             }
             case InstructionType::MULT: {
-                oss << "MULT";
+                oss << "mult";
                 break;
             }
             case InstructionType::DIV: {
-                oss << "DIV";
+                oss << "div";
                 break;
             }
 
             // LOGICAL
             case InstructionType::AND:
-                oss << "AND";
+                oss << "and";
                 break;
             case InstructionType::ANDI:
-                oss << "ANDI";
+                oss << "andi";
                 break;
             case InstructionType::OR:
-                oss << "OR";
+                oss << "or";
                 break;
             case InstructionType::ORI:
-                oss << "ORI";
+                oss << "ori";
                 break;
             case InstructionType::XOR:
-                oss << "XOR";
+                oss << "xor";
                 break;
             case InstructionType::XORI:
-                oss << "XORI";
+                oss << "xori";
                 break;
             case InstructionType::SLL:
-                oss << "SLL";
+                oss << "sll";
                 break;
             case InstructionType::SRL:
-                oss << "SRL";
+                oss << "srl";
                 break;
 
             // DATA
             case InstructionType::LI:
-                oss << "LI";
+                oss << "li";
                 break;
 
             // SPECIAL
@@ -553,18 +556,17 @@ public:
         }
 
         // serialize operands
-        for (size_t j = 0; j < inst.operands.size(); j++) {
-            oss << "," << inst.operands[j];
-        }
-
         if (inst.instructionType == InstructionType::MIGRATE) {
             oss << "," << inst.migratePath;
         } else if (inst.instructionType == InstructionType::SNAPSHOT) {
             oss << "," << inst.snapshotPath;
+        } else {
+            for (size_t j = 0; j < inst.operands.size(); j++) {
+                oss << "," << inst.operands[j];
+            }
         }
 
         return oss.str();
-
     }
 
     void deserialize(const std::string& data) {
@@ -583,22 +585,20 @@ public:
             std::string key = line.substr(0, eqPos);
             std::string value = line.substr(eqPos + 1);
 
+            std::string remainingData = ""; // cpu specific data
+
             if (key == "curr_inst_index") {
                 currentInstructionIndex = std::stoi(value);
             } else if (key == "slice_instructions") {
                 config.vm_exec_slice_in_instructions = std::stoi(value);
             } else if (key == "instruction") {
-                std::string instStr = line.substr(std::string("instruction=").length());
-                Instruction inst = stringToInst(instStr);
+                Instruction inst = stringToInst(value);
                 instructions.emplace_back(inst);
             } else {
-                std::string remainingData = line + "\n";
-                while (std::getline(iss, line)) {
-                    remainingData += line + "\n";
-                }
-                cpu->deserialize(remainingData);
-                break;
+                remainingData = line + "\n";
             }
+
+            cpu->deserialize(remainingData);
         }
     }
 
@@ -633,7 +633,7 @@ public:
     }
 
     void migrate(const std::string& target) {
-        // TODO - add migration logic to IP or hostname
+        std::cout << target << std::endl;
         size_t colonPos = target.find(':');
         if (colonPos == std::string::npos) {
             std::cerr << "Invalid migration format. Expecting IP:PORT" << std::endl;
@@ -703,13 +703,13 @@ public:
             } else if (instructions.at(currentInstructionIndex).instructionType == InstructionType::MIGRATE) {
                 migrate(instructions.at(currentInstructionIndex).migratePath);
                 migrated = true;
-                break;
             } else {
                 cpu->execute(instructions.at(currentInstructionIndex));
             }
             currentInstructionIndex++;
         }
-        return !migrated && currentInstructionIndex < instructions.size();
+        return !migrated && currentInstructionIndex < instructions.size(); // end process after migration on sender
+//        return currentInstructionIndex < instructions.size();
     }
 
     bool isMigrated() const {
@@ -746,7 +746,7 @@ public:
         std::unique_ptr<VM> vm = std::make_unique<VM>(config, std::move(cpu), current_instruction_index);
         vms.emplace_back(std::move(vm));
     }
-    void run() { // Instructions first, then listening mode
+    void run() {
         bool allVMSCompleted = false;
         while (!allVMSCompleted) {
             allVMSCompleted = true;
@@ -761,7 +761,6 @@ public:
     }
 
     void listenMigration(int port) {
-
         // create listen socket
         int listenSock = socket(AF_INET, SOCK_STREAM, 0);
         if (listenSock < 0) {
@@ -842,18 +841,19 @@ public:
 
         // Deserialize VM
         std::unique_ptr<CPU> cpu = std::make_unique<CPU>(0); // temp VMID
-        VM migratedVM(Config(), std::move(cpu));
-        migratedVM.deserialize(serializedData);
+        std::unique_ptr<VM> migratedVM = std::make_unique<VM>(Config(), std::move(cpu));
+        migratedVM->deserialize(serializedData);
+        Config config = migratedVM->getConfig();
+        migratedVM->changeVMID(config.vmID);
 
-        Config config = migratedVM.getConfig();
-
-        std::unique_ptr<VM> newVM = std::make_unique<VM>(config, migratedVM.releaseCPU(), migratedVM.getCurrInstIndex());
-        vms.emplace_back(std::move(newVM));
+        vms.emplace_back(std::move(migratedVM));
 
         std::cout << "Migrated VM " << config.vmID << " has been received and added to hypervisor" << std::endl;
 
         close(clientSock);
         close(listenSock);
+
+        run();
     }
 };
 
